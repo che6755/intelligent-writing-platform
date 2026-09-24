@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from sqlalchemy import select, text
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,6 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE documents ADD COLUMN {column} {definition}"))
     yield
 
-
 app = FastAPI(title="智能写作助手后端", lifespan=lifespan)
 
 if getattr(sys, "frozen", False):
@@ -43,24 +42,18 @@ else:
     frontend_dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 origins = [
-    "http://localhost:5173",  
+    "http://localhost:5173",
     "http://localhost",
     "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, 
-    allow_credentials=True,  
-    allow_methods=["*"],  # 允许所有方法
-    allow_headers=["*"],  # 允许所有请求头
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# ... (CORS 中间件配置和之前一样)
-
-# 模拟 LLM 服务 (已废弃，改用 llm_service)
-# def mock_llm_generate_outline(topic: str) -> dict:
-#     ...
 
 @app.post("/api/generate-outline")
 async def generate_outline(request: DocumentCreate):
@@ -68,15 +61,6 @@ async def generate_outline(request: DocumentCreate):
     生成写作大纲 (接入真实大模型)
     """
     prompt = f"请为主题 '{request.topic}' 生成一份详细的写作大纲。请以JSON格式返回，包含 'outline' (章节列表) 和 'materials' (素材列表) 两个字段。"
-    
-    # 这里为了演示简单，我们还是先返回模拟数据，或者你可以尝试调用 llm_service.generate_text
-    # 真实调用示例:
-    # llm_response = await llm_service.generate_text(prompt)
-    # 解析 llm_response 为 JSON ...
-    
-    # 暂时保持模拟数据以确保前端能跑，你可以取消注释下面代码来测试真实调用
-    # response_text = await llm_service.generate_text(prompt)
-    # print(f"LLM Response: {response_text}")
 
     return {
         "outline": [
@@ -99,83 +83,9 @@ async def ai_chat(request: dict):
     user_message = request.get("message", "")
     if not user_message:
         raise HTTPException(status_code=400, detail="Message is required")
-    
+
     response = await llm_service.generate_text(user_message)
     return {"reply": response}
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_personal_message(self, message: dict, websocket: WebSocket):
-        await websocket.send_json(message)
-
-manager = ConnectionManager()
-
-# 新增：AI 实时纠错函数
-async def ai_realtime_check(text_chunk: str) -> dict:
-    # 只有当文本长度足够且不是太短时才检查，避免频繁调用
-    if len(text_chunk) < 10:
-        return {"suggestions": []}
-
-    # 去除 HTML 标签
-    import re
-    clean_text = re.sub(r'<[^>]+>', '', text_chunk)
-    
-    # 截取最后一段或最近输入的文本进行检查
-    check_text = clean_text[-300:]
-
-    prompt = f"""检查以下中文文本中的【错别字】。
-
-文本：{check_text}
-
-严格规则：
-1. 只标记【错别字】，即写错的字（如"以经"应为"已经"，"在"与"再"混淆）
-2. 禁止标记：同义词替换（如"历来/向来"都对）、语法问题、标点、表达风格
-3. error必须是原文中存在的完整词语
-4. 不确定时返回空数组
-
-JSON格式：{{"suggestions":[{{"error":"错字","fix":"正确","reason":"原因"}}]}}
-无错误：{{"suggestions":[]}}"""
-
-    try:
-        # 使用较短的 system prompt 提高速度
-        llm_response = await llm_service.generate_text(prompt, system_prompt="你是一个校对助手。只返回 JSON。")
-        
-        # 使用 json_repair 自动修复并解析 JSON
-        result = json_repair.loads(llm_response)
-        return result
-    except Exception as e:
-        print(f"实时纠错失败: {e}")
-        return {"suggestions": []}
-
-@app.websocket("/ws/writing/{doc_id}")
-async def websocket_endpoint(websocket: WebSocket, doc_id: int):
-    await manager.connect(websocket)
-    try:
-        while True:
-            # 1. 接收前端发来的文本
-            data = await websocket.receive_text()
-            # print(f"文档 {doc_id} 收到实时更新: {data[:20]}...")
-
-            # 2. 调用实时纠错逻辑 (异步调用)
-            result = await ai_realtime_check(data)
-
-            # 3. 如果有建议，发回给前端
-            if result and result.get("suggestions"):
-                await manager.send_personal_message(result, websocket)
-            
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        print(f"文档 {doc_id} 断开连接")
 
 @app.get("/api/documents", response_model=List[Document])
 async def read_documents(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):

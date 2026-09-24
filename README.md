@@ -1,13 +1,12 @@
 # 智能写作平台
 
-一个面向高中生和大学生的 AI 议论文写作辅助平台。项目采用前后端分离架构，帮助用户从确定主题开始，完成大纲生成、在线写作、实时纠错、针对性分析和 AI 评分。
+一个面向高中生和大学生的 AI 议论文写作辅助平台。项目采用前后端分离架构，帮助用户从确定主题开始，完成大纲生成、在线写作、针对性分析和 AI 评分。
 
 ## 项目亮点
 
 - **分阶段写作流程**：主题创建、大纲准备、正文编辑、分析优化、提交评分形成完整闭环。
 - **适配不同写作者**：支持高中和大学两种写作者身份，并支持中文、英文议论文模式。
 - **AI 写作辅助**：提供大纲提示、举例提示、语法检查、标题优化、逻辑优化、句式润色和结构检查等能力。
-- **实时写作反馈**：中文写作时通过 WebSocket 将错别字建议推送到编辑器侧边栏。
 - **富文本编辑体验**：集成本地 TinyMCE，支持常用文本格式、列表、链接、表格、字数统计和自动保存。
 - **评分报告留存**：从内容切题、结构逻辑、语言表达等维度生成评分和改进建议，并保存到历史记录。
 - **本地化运行**：默认使用 SQLite 保存数据，前端内置 TinyMCE 静态资源，适合本地开发、演示和容器化部署。
@@ -52,7 +51,6 @@
 - 中文作文支持输入文章标题。
 - 使用 TinyMCE 编辑正文。
 - 自动保存写作进度。
-- 中文写作支持 WebSocket 实时错别字检查。
 - 可按需获取大纲提示、举例提示或语法检查。
 - 完成写作后提交全文，生成 AI 评分报告。
 
@@ -70,7 +68,7 @@
 ```text
 Vue 3 + Vite + TinyMCE
           |
-       Axios / WebSocket
+      Axios
           |
 FastAPI + SQLAlchemy Async
           |
@@ -98,7 +96,6 @@ FastAPI + SQLAlchemy Async
 - Pydantic Settings
 - OpenAI SDK
 - json-repair
-- WebSocket
 
 后端入口位于 [`backend/app/main.py`](backend/app/main.py)，模型服务封装位于 [`backend/app/services/llm_service.py`](backend/app/services/llm_service.py)。
 
@@ -186,7 +183,6 @@ LLM_MODEL=模型名称
 | `DELETE` | `/api/documents/{id}` | 删除文档 |
 | `POST` | `/api/documents/{id}/analysis` | 执行指定的 AI 分析任务 |
 | `POST` | `/api/documents/{id}/score` | 提交文章并生成评分报告 |
-| `WS` | `/ws/writing/{id}` | 接收实时纠错建议 |
 
 ## 目录结构
 
@@ -205,7 +201,7 @@ intelligent-writing-platform/
 │   ├── src/
 │   │   ├── views/                  # 首页、创建页、编辑器、使用说明
 │   │   ├── router/                 # 前端路由
-│   │   └── config.js               # API 与 WebSocket 地址配置
+│   │   └── config.js               # API 地址配置
 │   └── public/tinymce/             # 本地 TinyMCE 资源
 ├── docker-compose.yml
 ├── .env.example
@@ -236,5 +232,5 @@ npm run preview
 
 - AI 辅助作文与议论文写作工具。
 - 大模型调用、结构化 JSON 输出和结果修复的实践项目。
-- Vue 3、FastAPI、异步数据库和 WebSocket 的全栈示例。
+- Vue 3、FastAPI 和异步数据库的全栈示例。
 - 可继续扩展用户系统、文章导出、更多作文类型和个性化评分标准的写作平台。

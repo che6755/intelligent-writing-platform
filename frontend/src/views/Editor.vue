@@ -40,7 +40,6 @@
                 tinymce-script-src="/tinymce/tinymce.min.js"
                 license-key="gpl"
                 :init="tinymceInit"
-                @init="onEditorInit"
                 @onKeyUp="handleInput"
               />
             </div>
@@ -114,23 +113,6 @@
           <!-- 右侧：侧边栏 (固定悬浮) -->
           <div v-if="!isCompleted" class="sidebar-column">
             <div class="sticky-wrapper">
-              <!-- 实时建议区域 -->
-              <div v-if="realtimeSuggestions.length > 0" class="sidebar-card suggestion-card">
-                <div class="card-header">
-                  <h3>💡 实时建议</h3>
-                </div>
-                <div class="card-body">
-                  <div v-for="(item, index) in realtimeSuggestions" :key="index" class="suggestion-item">
-                    <div class="suggestion-content">
-                      <span class="error-text">❌ {{ item.error }}</span>
-                      <span class="arrow">→</span>
-                      <span class="fix-text">✅ {{ item.fix }}</span>
-                    </div>
-                    <p class="reason">{{ item.reason }}</p>
-                  </div>
-                </div>
-              </div>
-
               <div v-if="showOutlinePanel && !isCompleted" class="sidebar-card outline-card">
                 <div class="card-header">
                   <h3>📋 写作大纲</h3>
@@ -183,24 +165,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
-import { API_BASE_URL, getWebSocketUrl } from '../config';
+import { API_BASE_URL } from '../config';
 import Editor from '@tinymce/tinymce-vue'; // 导入 TinyMCE Vue 组件
 
 // 自定义防抖函数，避免依赖 lodash
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
 const props = defineProps({ id: String });
 
 // TinyMCE 编辑器配置
@@ -261,11 +231,6 @@ const generatedMaterials = ref([]);
 
 const API_URL = `${API_BASE_URL}/documents`;
 
-const realtimeSuggestions = ref([]); // 存储实时建议
-let websocket = null;
-const editorInstance = ref(null); // 存储 TinyMCE 实例
-
-const WS_URL = getWebSocketUrl(`/ws/writing/${props.id}`);
 const isChinese = computed(() => document.value?.language !== 'en');
 const isCompleted = computed(() => Boolean(scoreReport.value));
 const completionActions = computed(() => isChinese.value
@@ -297,36 +262,6 @@ function analysisButtonText(action) {
   return activeAnalysisAction.value === action ? `${analysisLabels[action]}进行中...` : analysisLabels[action];
 }
 
-// 过滤已修正的建议，确保用户修正后立即移除提示
-const pruneResolvedSuggestions = (text, suggestions) => {
-  if (!suggestions || !suggestions.length) return [];
-  if (!text) return [];
-  // 去除 HTML 标签后再检查
-  const plainText = text.replace(/<[^>]*>/g, '');
-  return suggestions.filter(item => item?.error && plainText.includes(item.error));
-};
-
-// TinyMCE 初始化回调
-const onEditorInit = (evt, editor) => {
-  editorInstance.value = editor;
-};
-
-// 缓存上次高亮的错误文本，避免重复处理
-let lastHighlightedErrors = [];
-
-// 禁用编辑器内高亮，只在侧边栏显示建议（避免光标跳动）
-const highlightErrors = (suggestions) => {
-  // 不再操作编辑器 DOM，完全避免光标问题
-  // 建议只通过右侧 realtimeSuggestions 显示
-};
-
-// 定义防抖后的发送函数：只有当用户停止打字 500ms 后才会发送
-const sendTextToBackend = debounce((text) => {
-  if (websocket && websocket.readyState === WebSocket.OPEN) {
-    websocket.send(text);
-  }
-}, 500);
-
 const saveStatusText = computed(() => {
   if (isSaving.value) return '正在保存...';
   if (lastSavedTime.value) return `已保存 ${lastSavedTime.value}`;
@@ -342,51 +277,6 @@ onMounted(async () => {
     }
   } catch (error) {
     console.error("加载文档失败", error);
-  }
-  if (!isChinese.value) return;
-  websocket = new WebSocket(WS_URL);
-  
-  websocket.onopen = () => {
-    console.log('WebSocket 连接成功');
-  };
-
-  websocket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log('收到后端建议:', data);
-    // 将收到的建议显示出来
-    if (data.suggestions) {
-      const currentText = document.value?.user_text || '';
-      const filtered = pruneResolvedSuggestions(currentText, data.suggestions);
-      realtimeSuggestions.value = filtered;
-      // 在编辑器中高亮
-      highlightErrors(filtered);
-    } else {
-      realtimeSuggestions.value = [];
-      highlightErrors([]);
-    }
-  };
-  
-  websocket.onclose = () => console.log('WebSocket 连接断开');
-});
-
-onUnmounted(() => {
-  if (websocket) websocket.close();
-});
-
-// 监听文档内容变化，发送给后端
-watch(() => document.value?.user_text, (newText) => {
-  if (newText) {
-    sendTextToBackend(newText);
-    if (realtimeSuggestions.value.length) {
-      const filtered = pruneResolvedSuggestions(newText, realtimeSuggestions.value);
-      if (filtered.length !== realtimeSuggestions.value.length) {
-        realtimeSuggestions.value = filtered;
-        highlightErrors(filtered);
-      }
-    }
-  } else {
-    realtimeSuggestions.value = [];
-    highlightErrors([]);
   }
 });
 
